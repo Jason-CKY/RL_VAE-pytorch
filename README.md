@@ -10,49 +10,23 @@ This repo is a pytorch implementation of training a variational autoencoder (VAE
 * Clone this repo
 * pip install -r requirements.txt
 
-### Training model for openai gym environment
-* Edit training parameters in ./Algorithms/<algo>/config.json
+### Generating data from openai gym environment
 ```
-python train.py
-usage: train.py [-h] [--env ENV] [--agent {ddpg,trpo,ppo,td3,random}]
-                [--arch {mlp,cnn}] --timesteps TIMESTEPS [--seed SEED]
-                [--num_trials NUM_TRIALS] [--normalize] [--rlbench] [--image]
+python generate_data.py
+usage: generate_data.py [-h] --env ENV --num_samples NUM_SAMPLES
+                        [--max_ep_len MAX_EP_LEN] [--seed SEED] [--rlbench]
+                        [--view {wrist_rgb,front_rgb,left_shoulder_rgb,right_shoulder_rgb}]
 
 optional arguments:
   -h, --help            show this help message and exit
   --env ENV             environment_id
-  --agent {ddpg,trpo,ppo,td3,random}
-                        specify type of agent
-  --arch {mlp,cnn}      specify architecture of neural net
-  --timesteps TIMESTEPS
-                        specify number of timesteps to train for
+  --num_samples NUM_SAMPLES
+                        specify number of image samples to generate
+  --max_ep_len MAX_EP_LEN
+                        Maximum length of an episode
   --seed SEED           seed number for reproducibility
-  --num_trials NUM_TRIALS
-                        Number of times to train the algo
-  --normalize           if true, normalize environment observations
   --rlbench             if true, use rlbench environment wrappers
-  --image               if true, use rlbench environment wrappers
-```
-
-### Testing trained model performance
-```
-python test.py
-usage: test.py [-h] [--env ENV] [--agent {ddpg,trpo,ppo,td3,random}]
-               [--arch {mlp,cnn}] [--render] [--gif] [--timesteps TIMESTEPS]
-               [--seed SEED] [--normalize] [--rlbench] [--image]
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --env ENV             environment_id
-  --agent {ddpg,trpo,ppo,td3,random}
-                        specify type of agent
-  --arch {mlp,cnn}      specify architecture of neural net
-  --render              if true, display human renders of the environment
-  --gif                 if true, make gif of the trained agent
-  --timesteps TIMESTEPS
-                        specify number of timesteps to train for
-  --seed SEED           seed number for reproducibility
-  --normalize           if true, normalize environment observations
-  --rlbench             if true, use rlbench environment wrappers
-  --image               if true, use rlbench environment wrappers
+  --view {wrist_rgb,front_rgb,left_shoulder_rgb,right_shoulder_rgb}
+                        choose the type of camera view to generate image (only
+                        for RLBench envs)
 ```
