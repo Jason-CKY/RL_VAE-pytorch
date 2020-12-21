@@ -4,3 +4,5 @@ argparse
 tqdm
 gym
 pybullet
+pytorch-lightning==1.0.8
+pytorch-lightning-bolts==0.2.5rc1
