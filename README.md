@@ -30,3 +30,27 @@ optional arguments:
                         choose the type of camera view to generate image (only
                         for RLBench envs)
 ```
+
+### Training VAE
+```
+python train_vae.py
+usage: train_vae.py [-h] [--dir DIR] [--seed SEED] [--num_workers NUM_WORKERS]
+                    [--batch_size BATCH_SIZE] [--epochs EPOCHS] [--lr LR]
+                    [--ngpu NGPU] [--save_freq SAVE_FREQ]
+                    [--save_dir SAVE_DIR]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --dir DIR             path to image folders
+  --seed SEED           seed number for reproducibility
+  --num_workers NUM_WORKERS
+                        number of workers for dataloaders
+  --batch_size BATCH_SIZE
+                        batch size
+  --epochs EPOCHS       Number of epochs
+  --lr LR               Learning Rate
+  --ngpu NGPU           number of gpus to use
+  --save_freq SAVE_FREQ
+                        save weights every <x> iterations
+  --save_dir SAVE_DIR   path to save weights and logs
+```

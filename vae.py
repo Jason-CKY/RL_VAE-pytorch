@@ -4,12 +4,12 @@ import torch.nn as nn
 from torch.nn import functional as F
 from pl_bolts.models.autoencoders.components import resnet18_encoder, resnet18_decoder
 
-class VAE(pl.LightningModule):
-    def __init__(self, enc_out_dim=512, latent_dim=256, input_height=128):
+class VAE(nn.Module):
+    def __init__(self, enc_out_dim=512, latent_dim=256, input_height=128, device='cpu'):
         super().__init__()
 
-        self.save_hyperparameters()
-
+        self.latent_dim = latent_dim
+        self.device = device
         # encoder, decoder
         self.encoder = resnet18_encoder(False, False)
         self.decoder = resnet18_decoder(
@@ -25,9 +25,6 @@ class VAE(pl.LightningModule):
 
         # for the gaussian likelihood
         self.log_scale = nn.Parameter(torch.Tensor([0.0]))
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-4)
 
     def gaussian_likelihood(self, mean, logscale, sample):
         scale = torch.exp(logscale)
@@ -52,9 +49,7 @@ class VAE(pl.LightningModule):
         kl = kl.sum(-1)
         return kl
 
-    def training_step(self, batch, batch_idx):
-        x, _ = batch
-
+    def encode_image(self, x):
         # encode x to get the mu and variance parameters
         x_encoded = self.encoder(x)
         mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
@@ -63,6 +58,18 @@ class VAE(pl.LightningModule):
         std = torch.exp(log_var / 2)
         q = torch.distributions.Normal(mu, std)
         z = q.rsample()
+
+        return z
+
+    def get_elbo_loss(self, x):
+        # encode x to get the mu and variance parameters
+        x_encoded = self.encoder(x)
+        mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
+
+        # sample z from q
+        std = torch.exp(log_var / 2)
+        q = torch.distributions.Normal(mu, std)
+        z = q.rsample().cuda()
 
         # decoded 
         x_hat = self.decoder(z)
@@ -77,45 +84,56 @@ class VAE(pl.LightningModule):
         elbo = (kl - recon_loss)
         elbo = elbo.mean()
 
-        self.log_dict({
+        log_dict = {
             'elbo': elbo,
             'kl': kl.mean(),
-            'recon_loss': recon_loss.mean(), 
-            'reconstruction': recon_loss.mean()
-        })
+            'recon_loss': recon_loss.mean()
+        }
 
-        return elbo
+        return elbo, log_dict
 
-    def validation_step(self, batch, batch_idx):
-        x, _ = batch
+    def reconstruct(self, n_preds):
+        '''
+        Decode from a normal distribution to give images
+        '''
 
-        # encode x to get the mu and variance parameters
-        x_encoded = self.encoder(x)
-        mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
+        # Z COMES FROM NORMAL(0, 1)
+        num_preds = n_preds
+        p = torch.distributions.Normal(torch.zeros((self.latent_dim,)), torch.ones((self.latent_dim,)))
+        z = p.rsample((num_preds,))
 
-        # sample z from q
-        std = torch.exp(log_var / 2)
-        q = torch.distributions.Normal(mu, std)
-        z = q.rsample()
+        # SAMPLE IMAGES
+        with torch.no_grad():
+            pred = self.decoder(z.to(self.device)).cpu()
 
-        # decoded 
-        x_hat = self.decoder(z)
+        return pred
 
-        # reconstruction loss
-        recon_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
+    def save_weights(self, fpath):
+        print('saving checkpoint...')
+        checkpoint = {
+            'encoder': self.encoder.state_dict(),
+            'fc_mu': self.fc_mu.state_dict(),
+            'fc_var': self.fc_var.state_dict(),
+            'decoder': self.decoder.state_dict()
+        }
+        torch.save(checkpoint, fpath)
+        print(f"checkpoint saved at {fpath}")    
+    
+    def load_weights(self, fpath):
+        if os.path.isfile(fpath):
+            checkpoint = torch.load(fpath, map_location=self.device)
+            self.encoder.load_state_dict(checkpoint['encoder'])
+            self.fc_mu.load_state_dict(checkpoint['fc_mu'])
+            self.fc_var.load_state_dict(checkpoint['fc_var'])
+            self.decoder.load_state_dict(checkpoint['decoder'])
 
-        # kl
-        kl = self.kl_divergence(z, mu, std)
+            print('checkpoint loaded at {}'.format(fpath))
+        else:
+            raise AssertionError(f"No weights file found at {fpath}")
 
-        # elbo
-        elbo = (kl - recon_loss)
-        elbo = elbo.mean()
-
-        self.log_dict({
-            'val_elbo': elbo,
-            'val_kl': kl.mean(),
-            'val_recon_loss': recon_loss.mean(), 
-            'val_reconstruction': recon_loss.mean()
-        })
-
-        return elbo
+    def dataparallel(self, ngpu):
+        print(f"using {ngpu} gpus, gpu id: {list(range(ngpu))}")
+        self.encoder = nn.DataParallel(self.encoder, list(range(ngpu)))
+        self.decoder = nn.DataParallel(self.decoder, list(range(ngpu)))
+        self.fc_mu = nn.DataParallel(self.fc_mu, list(range(ngpu)))
+        self.fc_var = nn.DataParallel(self.fc_var, list(range(ngpu)))
