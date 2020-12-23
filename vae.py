@@ -5,18 +5,21 @@ from torch.nn import functional as F
 from pl_bolts.models.autoencoders.components import resnet18_encoder, resnet18_decoder
 
 class VAE(nn.Module):
-    def __init__(self, enc_out_dim=512, latent_dim=256, input_height=128, device='cpu'):
+    def __init__(self, beta=4, enc_out_dim=512, latent_dim=256, input_height=128, device='cpu'):
         super().__init__()
 
+        self.beta = beta
         self.latent_dim = latent_dim
         self.device = device
         # encoder, decoder
         self.encoder = resnet18_encoder(False, False)
-        self.decoder = resnet18_decoder(
+        self.decoder = nn.Sequential(
+            resnet18_decoder(
             latent_dim=latent_dim, 
             input_height=input_height, 
             first_conv=False, 
-            maxpool1=False
+            maxpool1=False), 
+            nn.Tanh()   # Tanh activation to clamp values to [-1, 1] of the input
         )
 
         # distribution parameters
@@ -26,38 +29,27 @@ class VAE(nn.Module):
         # for the gaussian likelihood
         self.log_scale = nn.Parameter(torch.Tensor([0.0]))
 
+    def reparameterise(self, mu, logvar):
+        if self.training:
+            std = logvar.mul(0.5).exp_()
+            eps = std.data.new(std.size()).normal_()
+            return eps.mul(std).add_(mu)
+        else:
+            return mu
+
     def gaussian_likelihood(self, mean, logscale, sample):
         scale = torch.exp(logscale)
         dist = torch.distributions.Normal(mean, scale)
         log_pxz = dist.log_prob(sample)
         return log_pxz.sum(dim=(1, 2, 3))
 
-    def kl_divergence(self, z, mu, std):
-        # --------------------------
-        # Monte carlo KL divergence
-        # --------------------------
-        # 1. define the first two probabilities (in this case Normal for both)
-        p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
-        q = torch.distributions.Normal(mu, std)
-
-        # 2. get the probabilities from the equation
-        log_qzx = q.log_prob(z)
-        log_pz = p.log_prob(z)
-
-        # kl
-        kl = (log_qzx - log_pz)
-        kl = kl.sum(-1)
-        return kl
-
     def encode_image(self, x):
         # encode x to get the mu and variance parameters
         x_encoded = self.encoder(x)
         mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
 
-        # sample z from q
-        std = torch.exp(log_var / 2)
-        q = torch.distributions.Normal(mu, std)
-        z = q.rsample()
+        # sample z from mu and log_var
+        z = self.reparameterise(mu, log_var)
 
         return z
 
@@ -66,47 +58,49 @@ class VAE(nn.Module):
         x_encoded = self.encoder(x)
         mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
 
-        # sample z from q
-        std = torch.exp(log_var / 2)
-        q = torch.distributions.Normal(mu, std)
-        z = q.rsample().cuda()
-
-        # decoded 
+        # sample z from mu and log_var
+        z = self.reparameterise(mu, log_var)
         x_hat = self.decoder(z)
 
-        # reconstruction loss
-        recon_loss = self.gaussian_likelihood(x_hat, self.log_scale, x)
-
-        # kl
-        kl = self.kl_divergence(z, mu, std)
-
-        # elbo
-        elbo = (kl - recon_loss)
-        elbo = elbo.mean()
+        recon_loss = F.mse_loss(x_hat, x, reduction='sum')
+        kld = 0.5*torch.sum(log_var.exp() - log_var - 1 + mu.pow(2))
+        elbo = recon_loss + kl_d # self.beta * kld
 
         log_dict = {
-            'elbo': elbo,
-            'kl': kl.mean(),
-            'recon_loss': recon_loss.mean()
+            'elbo': elbo.item(),
+            'recon_loss': recon_loss.item(),
+            'kl': kld.item()
         }
-
         return elbo, log_dict
 
-    def reconstruct(self, n_preds):
+    def reconstruct(self, n_preds, sampled_noise=None):
         '''
         Decode from a normal distribution to give images
         '''
 
-        # Z COMES FROM NORMAL(0, 1)
-        num_preds = n_preds
-        p = torch.distributions.Normal(torch.zeros((self.latent_dim,)), torch.ones((self.latent_dim,)))
-        z = p.rsample((num_preds,))
+        if sampled_noise is None:
+            # Z COMES FROM NORMAL(0, 1)
+            p = torch.distributions.Normal(torch.zeros((self.latent_dim,)), torch.ones((self.latent_dim,)))
+            z = p.rsample((n_preds,))
+        else:
+            z = sampled_noise
 
         # SAMPLE IMAGES
         with torch.no_grad():
             pred = self.decoder(z.to(self.device)).cpu()
 
         return pred
+
+    def forward(self, x):
+        # encode x to get the mu and variance parameters
+        x_encoded = self.encoder(x)
+        mu, log_var = self.fc_mu(x_encoded), self.fc_var(x_encoded)
+
+        # sample z from mu and log_var
+        z = self.reparameterise(mu, log_var)
+        x_hat = self.decoder(z)
+
+        return x_hat
 
     def save_weights(self, fpath):
         print('saving checkpoint...')

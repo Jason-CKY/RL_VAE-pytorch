@@ -35,9 +35,9 @@ optional arguments:
 ```
 python train_vae.py
 usage: train_vae.py [-h] [--dir DIR] [--seed SEED] [--num_workers NUM_WORKERS]
-                    [--batch_size BATCH_SIZE] [--epochs EPOCHS] [--lr LR]
-                    [--ngpu NGPU] [--save_freq SAVE_FREQ]
-                    [--save_dir SAVE_DIR]
+                    [--batch_size BATCH_SIZE] [--epochs EPOCHS] [--beta BETA]
+                    [--lr LR] [--ngpu NGPU] [--save_freq SAVE_FREQ]
+                    [--log_freq LOG_FREQ] [--save_dir SAVE_DIR]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -48,9 +48,11 @@ optional arguments:
   --batch_size BATCH_SIZE
                         batch size
   --epochs EPOCHS       Number of epochs
+  --beta BETA           Weighing value for KLD in B-VAE
   --lr LR               Learning Rate
   --ngpu NGPU           number of gpus to use
   --save_freq SAVE_FREQ
                         save weights every <x> iterations
+  --log_freq LOG_FREQ   log losses every <x> iterations
   --save_dir SAVE_DIR   path to save weights and logs
 ```
