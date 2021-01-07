@@ -2,6 +2,8 @@
 
 This repo is a pytorch implementation of training a variational autoencoder (VAE). This is written to train a VAE for use in a RL environment, and contains code to generate images from random exploration of various RL environments from [pybullet](https://github.com/bulletphysics/bullet3) and [RLBench](https://github.com/stepjam/RLBench) for training.
 
+Beta-VAE can also be trained by setting the Beta value to any value greater than 1.
+
 ## Dependencies:
 * CUDA >= 10.2
 * [RLBench](https://github.com/stepjam/RLBench), only if you want to use RLBench environments to train VAE
@@ -33,7 +35,6 @@ optional arguments:
 
 ### Training VAE
 ```
-python train_vae.py
 usage: train_vae.py [-h] [--dir DIR] [--seed SEED] [--num_workers NUM_WORKERS]
                     [--batch_size BATCH_SIZE] [--epochs EPOCHS] [--beta BETA]
                     [--lr LR] [--ngpu NGPU] [--save_freq SAVE_FREQ]
